@@ -10,10 +10,11 @@ import {
   moveNode,
   moveNodeTo,
   dropWidget,
+  beginNodeDrag,
+  endDrag,
 } from '../state.js'
 
 const props = defineProps({ node: Object })
-
 const isSelected = computed(() => state.selectedId === props.node.id)
 const isDragOver = computed(() => state.dragOverId === props.node.id)
 const style = computed(() => nodeStyle(props.node))
@@ -24,27 +25,24 @@ function onSelect() {
 
 function onDragStart(event) {
   event.stopPropagation()
+  beginNodeDrag(props.node.id)
   event.dataTransfer.effectAllowed = 'move'
-  event.dataTransfer.clearData()
-  event.dataTransfer.setData('application/x-vue-page-builder-node', props.node.id)
   event.dataTransfer.setData('text/plain', `node:${props.node.id}`)
 }
 
 function onDragEnd() {
-  state.dragOverId = null
+  endDrag()
 }
 
-function getNodeId(event) {
-  return event.dataTransfer.getData('application/x-vue-page-builder-node') || ''
-}
-
-function getWidgetType(event) {
-  return event.dataTransfer.getData('application/x-vue-page-builder-widget') || ''
-}
-
-function isInsideDraggedNode(nodeId, targetId) {
-  const dragged = findNode(state.elements, nodeId)
-  return !!dragged?.children?.some(child => child.id === targetId || hasDescendant(child, targetId))
+function canAcceptDrop() {
+  const drag = state.activeDrag
+  if (!drag) return false
+  if (drag.kind === 'node') {
+    if (drag.id === props.node.id) return false
+    const dragged = findNode(state.elements, drag.id)
+    if (dragged && containsNode(dragged, props.node.id)) return false
+  }
+  return true
 }
 
 function findNode(list, id) {
@@ -58,23 +56,24 @@ function findNode(list, id) {
   return null
 }
 
-function hasDescendant(node, id) {
-  return !!node.children?.some(child => child.id === id || hasDescendant(child, id))
+function containsNode(node, id) {
+  return !!node?.children?.some(child => child.id === id || containsNode(child, id))
 }
 
 function onDragOver(event) {
+  if (!canAcceptDrop()) return
+
   event.preventDefault()
   event.stopPropagation()
-
-  const widgetType = getWidgetType(event)
-  const nodeId = getNodeId(event)
-
-  if (!widgetType && !nodeId) return
-  if (nodeId === props.node.id) return
-  if (nodeId && isInsideDraggedNode(nodeId, props.node.id)) return
-
-  event.dataTransfer.dropEffect = widgetType ? 'copy' : 'move'
+  event.dataTransfer.dropEffect = state.activeDrag.kind === 'widget' ? 'copy' : 'move'
   state.dragOverId = props.node.id
+}
+
+function onDragLeave(event) {
+  // Ignore child transitions; the child ElementNode will become the target.
+  if (!event.currentTarget.contains(event.relatedTarget)) {
+    if (state.dragOverId === props.node.id) state.dragOverId = null
+  }
 }
 
 function getDropPosition(event) {
@@ -84,11 +83,8 @@ function getDropPosition(event) {
     return event.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
   }
 
-  // A section has three useful drop areas: top = before, middle = inside,
-  // bottom = after. This makes dropping into an existing section predictable.
   const y = event.clientY - rect.top
   const edge = Math.min(56, Math.max(24, rect.height * 0.22))
-
   if (y < edge) return 'before'
   if (y > rect.height - edge) return 'after'
   return 'inside'
@@ -98,17 +94,21 @@ function onDrop(event) {
   event.preventDefault()
   event.stopPropagation()
 
-  const widgetType = getWidgetType(event)
-  const nodeId = getNodeId(event)
-  const position = getDropPosition(event)
-
-  if (widgetType) {
-    dropWidget(widgetType, props.node.id, position)
-  } else if (nodeId && nodeId !== props.node.id) {
-    moveNodeTo(nodeId, props.node.id, position)
+  const drag = state.activeDrag
+  if (!drag || !canAcceptDrop()) {
+    endDrag()
+    return
   }
 
-  state.dragOverId = null
+  const position = getDropPosition(event)
+
+  if (drag.kind === 'widget') {
+    dropWidget(drag.type, props.node.id, position)
+  } else if (drag.kind === 'node') {
+    moveNodeTo(drag.id, props.node.id, position)
+  }
+
+  endDrag()
 }
 </script>
 
@@ -121,6 +121,7 @@ function onDrop(event) {
     @dragstart="onDragStart"
     @dragend="onDragEnd"
     @dragover="onDragOver"
+    @dragleave="onDragLeave"
     @drop="onDrop"
     @click.stop="onSelect"
   >
@@ -166,47 +167,16 @@ function onDrop(event) {
     </div>
 
     <hr v-else-if="node.type === 'divider'" class="node-content node-divider" />
-
     <div v-else-if="node.type === 'spacer'" class="node-content node-spacer"></div>
   </div>
 </template>
 
 <style scoped>
-.node-content {
-  position: relative;
-}
-
-.node-heading,
-.node-text {
-  margin: 0;
-}
-
-.node-image {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-
-.node-button {
-  display: block;
-  width: 100%;
-  color: inherit;
-  text-decoration: none;
-}
-
-.node-video {
-  overflow: hidden;
-}
-
-.node-video iframe {
-  width: 100%;
-  height: 100%;
-  border: 0;
-  display: block;
-  pointer-events: none;
-}
-
-.node-divider {
-  width: 100%;
-}
+.node-content { position: relative; }
+.node-heading, .node-text { margin: 0; }
+.node-image { display: block; width: 100%; height: auto; }
+.node-button { display: block; width: 100%; color: inherit; text-decoration: none; }
+.node-video { overflow: hidden; }
+.node-video iframe { width: 100%; height: 100%; border: 0; display: block; pointer-events: none; }
+.node-divider { width: 100%; }
 </style>
