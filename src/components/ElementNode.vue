@@ -28,9 +28,6 @@ function onDragStart(event) {
   event.dataTransfer.setData('text/plain', `node:${props.node.id}`)
 }
 
-function onDragEnd() {
-  endDrag()
-}
 
 function canAcceptDrop() {
   const drag = state.activeDrag
