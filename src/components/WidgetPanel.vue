@@ -2,9 +2,15 @@
 import { WIDGETS, addWidget, state } from '../state.js'
 
 function onDragStart(event, type) {
+  state.dragOverId = null
   event.dataTransfer.effectAllowed = 'copy'
+  event.dataTransfer.clearData()
   event.dataTransfer.setData('application/x-vue-page-builder-widget', type)
-  event.dataTransfer.setData('text/plain', type)
+  event.dataTransfer.setData('text/plain', `widget:${type}`)
+}
+
+function onDragEnd() {
+  state.dragOverId = null
 }
 </script>
 
@@ -14,12 +20,12 @@ function onDragStart(event, type) {
     <div class="panel-scroll">
       <div class="widget-grid">
         <div
-          class="widget-card"
           v-for="w in WIDGETS"
           :key="w.type"
+          class="widget-card"
           draggable="true"
           @dragstart="onDragStart($event, w.type)"
-          @dragend="state.dragOverId = null"
+          @dragend="onDragEnd"
           @click="addWidget(w.type)"
         >
           <div class="w-icon">{{ w.icon }}</div>
