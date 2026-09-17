@@ -1,37 +1,32 @@
 <script setup>
-import { state, selectNode, dropWidget, clearDragState } from '../state.js'
+import { state, selectNode, dropWidget, moveNodeTo, endDrag } from '../state.js'
 import ElementNode from './ElementNode.vue'
 
-function getWidgetType(event) {
-  return event.dataTransfer.getData('application/x-vue-page-builder-widget') || ''
-}
-
 function onCanvasDragOver(event) {
-  const widgetType = getWidgetType(event)
-  if (!widgetType) return
+  if (!state.activeDrag) return
   event.preventDefault()
-  event.dataTransfer.dropEffect = 'copy'
+  event.dataTransfer.dropEffect = state.activeDrag.kind === 'widget' ? 'copy' : 'move'
   state.dragOverId = '__canvas__'
-}
-
-function onCanvasDragLeave(event) {
-  if (event.currentTarget === event.target) state.dragOverId = null
 }
 
 function onCanvasDrop(event) {
   event.preventDefault()
-  const widgetType = getWidgetType(event)
-  if (widgetType) dropWidget(widgetType, null, 'inside')
-  clearDragState()
+  event.stopPropagation()
+
+  const drag = state.activeDrag
+  if (!drag) return
+
+  if (drag.kind === 'widget') {
+    dropWidget(drag.type, null, 'inside')
+  } else if (drag.kind === 'node') {
+    moveNodeTo(drag.id, null, 'inside')
+  }
+
+  endDrag()
 }
 
-function onEmptyDragOver(event) {
-  const widgetType = getWidgetType(event)
-  if (!widgetType) return
-  event.preventDefault()
-  event.stopPropagation()
-  event.dataTransfer.dropEffect = 'copy'
-  state.dragOverId = '__canvas__'
+function onCanvasDragLeave(event) {
+  if (event.currentTarget === event.target) state.dragOverId = null
 }
 </script>
 
@@ -51,7 +46,7 @@ function onEmptyDragOver(event) {
       <div
         v-if="!state.elements.length"
         class="canvas-empty"
-        @dragover="onEmptyDragOver"
+        @dragover.stop="onCanvasDragOver"
         @drop.stop="onCanvasDrop"
       >
         <div class="big">▦</div>
