@@ -32,7 +32,30 @@ export function createNode(type) {
 }
 export function cloneNode(node) { const copy = JSON.parse(JSON.stringify(node)); const remap = n => { n.id = uid(); if (n.children) n.children.forEach(remap) }; remap(copy); return copy }
 
-export const state = reactive({ elements: [], selectedId: null, activeTab: 'content', dragOverId: null })
+export const state = reactive({
+  elements: [],
+  selectedId: null,
+  activeTab: 'content',
+  dragOverId: null,
+  activeDrag: null,
+})
+
+export function beginWidgetDrag(type) {
+  state.activeDrag = { kind: 'widget', type }
+  state.dragOverId = null
+}
+
+export function beginNodeDrag(id) {
+  if (!findNode(state.elements, id)) return
+  state.activeDrag = { kind: 'node', id }
+  state.dragOverId = null
+}
+
+export function endDrag() {
+  state.activeDrag = null
+  state.dragOverId = null
+}
+
 export function findNode(list, id) { for (const n of list) { if (n.id === id) return n; if (n.children) { const found = findNode(n.children, id); if (found) return found } } return null }
 export function findParentList(list, id) { for (const n of list) { if (n.id === id) return { list, node: n }; if (n.children) { const found = findParentList(n.children, id); if (found) return found } } return null }
 function containsNode(node, id) { return !!node?.children?.some(child => child.id === id || containsNode(child, id)) }
@@ -47,22 +70,34 @@ export function moveNodeTo(id, targetId = null, position = 'inside') {
   const source = findParentList(state.elements, id); if (!source) return false
   const target = targetId ? findNode(state.elements, targetId) : null
   if (target && (target.id === source.node.id || containsNode(source.node, target.id))) return false
-  const node = source.node; source.list.splice(source.list.indexOf(node), 1)
+  const node = source.node
+  source.list.splice(source.list.indexOf(node), 1)
   if (!target) { state.elements.push(node); selectNode(node.id); return true }
   if (position === 'inside' && target.type === 'section') { target.children.push(node); selectNode(node.id); return true }
-  const parent = findParentList(state.elements, target.id); if (!parent) { state.elements.push(node); selectNode(node.id); return true }
-  let index = parent.list.indexOf(target); if (position === 'after') index++
-  parent.list.splice(index, 0, node); selectNode(node.id); return true
+  const parent = findParentList(state.elements, target.id)
+  if (!parent) { state.elements.push(node); selectNode(node.id); return true }
+  let index = parent.list.indexOf(target)
+  if (position === 'after') index++
+  parent.list.splice(index, 0, node)
+  selectNode(node.id)
+  return true
 }
 export function dropWidget(type, targetId = null, position = 'inside') {
-  const node = createNode(type); const target = targetId ? findNode(state.elements, targetId) : null
+  const node = createNode(type)
+  const target = targetId ? findNode(state.elements, targetId) : null
   if (target && position === 'inside' && target.type === 'section') target.children.push(node)
-  else if (target) { const parent = findParentList(state.elements, target.id); if (!parent) return null; let index = parent.list.indexOf(target); if (position === 'after') index++; parent.list.splice(index, 0, node) }
-  else state.elements.push(node)
-  selectNode(node.id); return node
+  else if (target) {
+    const parent = findParentList(state.elements, target.id)
+    if (!parent) return null
+    let index = parent.list.indexOf(target)
+    if (position === 'after') index++
+    parent.list.splice(index, 0, node)
+  } else state.elements.push(node)
+  selectNode(node.id)
+  return node
 }
 export function clearDragState() { state.dragOverId = null }
-export function clearAll() { if (!state.elements.length) return; if (confirm('Clear the entire canvas? This cannot be undone.')) { state.elements.splice(0); state.selectedId = null } }
+export function clearAll() { if (!state.elements.length) return; if (confirm('Clear the entire canvas? This cannot be undone.')) { state.elements.splice(0); state.selectedId = null; endDrag() } }
 export function updateSpacingSide(node, box, side, value) { const num = Number(value); const v = isNaN(num) ? 0 : num; if (node.spacing[box + 'Linked']) ['top','right','bottom','left'].forEach(s => node.spacing[box][s] = v); else node.spacing[box][side] = v }
 export function toggleLink(node, box) { node.spacing[box + 'Linked'] = !node.spacing[box + 'Linked']; if (node.spacing[box + 'Linked']) { const v = node.spacing[box].top; ['right','bottom','left'].forEach(s => node.spacing[box][s] = v) } }
 
@@ -82,12 +117,10 @@ export function nodeStyle(node) {
   }
 }
 
-/* Exported Vue SFCs use classes + a scoped <style>, never inline style attributes. */
 function kebab(k) { return k.replace(/[A-Z]/g, m => '-' + m.toLowerCase()) }
 function styleObjToCss(obj) { return Object.entries(obj).filter(([,v]) => v !== undefined && v !== null && v !== '').map(([k,v]) => `${kebab(k)}: ${v};`).join('\n  ') }
 function escapeHtml(str) { return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') }
 function cssClass(node) { return `pb-node-${node.id.replace(/[^a-zA-Z0-9_-]/g, '')}` }
-
 function genNode(node, depth, cssRules) {
   const ind = '  '.repeat(depth), cls = cssClass(node)
   cssRules.push(`.${cls} {\n  ${styleObjToCss(nodeStyle(node))}\n}`)
@@ -103,9 +136,7 @@ function genNode(node, depth, cssRules) {
     default: return ''
   }
 }
-
 export function generateSFC() {
-  const cssRules = []
-  const body = state.elements.map(n => genNode(n, 2, cssRules)).join('\n')
+  const cssRules = [], body = state.elements.map(n => genNode(n, 2, cssRules)).join('\n')
   return `<template>\n  <div class="pb-page">\n${body}\n  </div>\n</template>\n\n<script setup>\n// Generated by Vue Page Builder.\n// Layout, spacing, typography and colors are generated as scoped component CSS.\n<\\/script>\n\n<style scoped>\n.pb-page {\n  width: 100%;\n}\n.pb-button {\n  text-decoration: none;\n  display: inline-block;\n}\n.pb-image {\n  max-width: 100%;\n}\n.pb-video iframe {\n  width: 100%;\n  height: 100%;\n  border: 0;\n  display: block;\n}\n${cssRules.join('\n\n')}\n</style>\n`
 }
