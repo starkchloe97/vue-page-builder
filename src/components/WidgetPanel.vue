@@ -1,16 +1,15 @@
 <script setup>
-import { WIDGETS, addWidget, state } from '../state.js'
+import { WIDGETS, addWidget, state, beginWidgetDrag, endDrag } from '../state.js'
 
 function onDragStart(event, type) {
-  state.dragOverId = null
+  beginWidgetDrag(type)
   event.dataTransfer.effectAllowed = 'copy'
   event.dataTransfer.clearData()
-  event.dataTransfer.setData('application/x-vue-page-builder-widget', type)
   event.dataTransfer.setData('text/plain', `widget:${type}`)
 }
 
 function onDragEnd() {
-  state.dragOverId = null
+  endDrag()
 }
 </script>
 
