@@ -1,9 +1,10 @@
 <script setup>
-import { WIDGETS, addWidget, beginWidgetDrag, endDrag } from '../state.js'
+import { WIDGETS, addWidget, state, beginWidgetDrag, endDrag } from '../state.js'
 
 function onDragStart(event, type) {
   beginWidgetDrag(type)
   event.dataTransfer.effectAllowed = 'copy'
+  event.dataTransfer.clearData()
   event.dataTransfer.setData('text/plain', `widget:${type}`)
 }
 
@@ -17,7 +18,15 @@ function onDragEnd() {
     <div class="panel-head"><h2>Widgets</h2></div>
     <div class="panel-scroll">
       <div class="widget-grid">
-        <div v-for="w in WIDGETS" :key="w.type" class="widget-card" draggable="true" @dragstart="onDragStart($event, w.type)" @dragend="onDragEnd" @click="addWidget(w.type)">
+        <div
+          v-for="w in WIDGETS"
+          :key="w.type"
+          class="widget-card"
+          draggable="true"
+          @dragstart="onDragStart($event, w.type)"
+          @dragend="onDragEnd"
+          @click="addWidget(w.type)"
+        >
           <div class="w-icon">{{ w.icon }}</div>
           <div class="w-label">{{ w.label }}</div>
         </div>

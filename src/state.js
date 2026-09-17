@@ -32,11 +32,29 @@ export function createNode(type) {
 }
 export function cloneNode(node) { const copy = JSON.parse(JSON.stringify(node)); const remap = n => { n.id = uid(); if (n.children) n.children.forEach(remap) }; remap(copy); return copy }
 
-export const state = reactive({ elements: [], selectedId: null, activeTab: 'content', dragOverId: null, activeDrag: null })
-export function beginWidgetDrag(type) { state.activeDrag = { kind: 'widget', type }; state.dragOverId = null }
-export function beginNodeDrag(id) { state.activeDrag = { kind: 'node', id }; state.dragOverId = null }
-export function endDrag() { state.activeDrag = null; state.dragOverId = null }
-export function clearDragState() { state.dragOverId = null }
+export const state = reactive({
+  elements: [],
+  selectedId: null,
+  activeTab: 'content',
+  dragOverId: null,
+  activeDrag: null,
+})
+
+export function beginWidgetDrag(type) {
+  state.activeDrag = { kind: 'widget', type }
+  state.dragOverId = null
+}
+
+export function beginNodeDrag(id) {
+  if (!findNode(state.elements, id)) return
+  state.activeDrag = { kind: 'node', id }
+  state.dragOverId = null
+}
+
+export function endDrag() {
+  state.activeDrag = null
+  state.dragOverId = null
+}
 
 export function findNode(list, id) { for (const n of list) { if (n.id === id) return n; if (n.children) { const found = findNode(n.children, id); if (found) return found } } return null }
 export function findParentList(list, id) { for (const n of list) { if (n.id === id) return { list, node: n }; if (n.children) { const found = findParentList(n.children, id); if (found) return found } } return null }
@@ -52,21 +70,34 @@ export function moveNodeTo(id, targetId = null, position = 'inside') {
   const source = findParentList(state.elements, id); if (!source) return false
   const target = targetId ? findNode(state.elements, targetId) : null
   if (target && (target.id === source.node.id || containsNode(source.node, target.id))) return false
-  const node = source.node; source.list.splice(source.list.indexOf(node), 1)
+  const node = source.node
+  source.list.splice(source.list.indexOf(node), 1)
   if (!target) { state.elements.push(node); selectNode(node.id); return true }
   if (position === 'inside' && target.type === 'section') { target.children.push(node); selectNode(node.id); return true }
-  const parent = findParentList(state.elements, target.id); if (!parent) { state.elements.push(node); selectNode(node.id); return true }
-  let index = parent.list.indexOf(target); if (position === 'after') index++
-  parent.list.splice(index, 0, node); selectNode(node.id); return true
+  const parent = findParentList(state.elements, target.id)
+  if (!parent) { state.elements.push(node); selectNode(node.id); return true }
+  let index = parent.list.indexOf(target)
+  if (position === 'after') index++
+  parent.list.splice(index, 0, node)
+  selectNode(node.id)
+  return true
 }
 export function dropWidget(type, targetId = null, position = 'inside') {
-  const node = createNode(type); const target = targetId ? findNode(state.elements, targetId) : null
+  const node = createNode(type)
+  const target = targetId ? findNode(state.elements, targetId) : null
   if (target && position === 'inside' && target.type === 'section') target.children.push(node)
-  else if (target) { const parent = findParentList(state.elements, target.id); if (!parent) return null; let index = parent.list.indexOf(target); if (position === 'after') index++; parent.list.splice(index, 0, node) }
-  else state.elements.push(node)
-  selectNode(node.id); return node
+  else if (target) {
+    const parent = findParentList(state.elements, target.id)
+    if (!parent) return null
+    let index = parent.list.indexOf(target)
+    if (position === 'after') index++
+    parent.list.splice(index, 0, node)
+  } else state.elements.push(node)
+  selectNode(node.id)
+  return node
 }
-export function clearAll() { if (!state.elements.length) return; if (confirm('Clear the entire canvas? This cannot be undone.')) { state.elements.splice(0); state.selectedId = null } }
+export function clearDragState() { state.dragOverId = null }
+export function clearAll() { if (!state.elements.length) return; if (confirm('Clear the entire canvas? This cannot be undone.')) { state.elements.splice(0); state.selectedId = null; endDrag() } }
 export function updateSpacingSide(node, box, side, value) { const num = Number(value); const v = isNaN(num) ? 0 : num; if (node.spacing[box + 'Linked']) ['top','right','bottom','left'].forEach(s => node.spacing[box][s] = v); else node.spacing[box][side] = v }
 export function toggleLink(node, box) { node.spacing[box + 'Linked'] = !node.spacing[box + 'Linked']; if (node.spacing[box + 'Linked']) { const v = node.spacing[box].top; ['right','bottom','left'].forEach(s => node.spacing[box][s] = v) } }
 
